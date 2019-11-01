@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package byzq;
+
+import "google/protobuf/gorums.proto";   // has to be in include folder
+import "gogo/protobuf/gogoproto/gogo.proto";
+
+
+option (gogoproto.equal_all) = true;
+
+
+
+service Storage {
+	rpc Read(Key) returns (Value) {
+		option (gorums.qc) = true;
+		option (gorums.custom_return_type) = "Content";
+	}
+	rpc Write(Value) returns (WriteResponse) {
+		option (gorums.qc) = true;
+		option (gorums.qf_with_req) = true;
+	}
+	rpc SayHello(PingMessage) returns (PingMessage) {}
+}
+// Ping message
+message PingMessage {
+	string greeting = 1;
+  }
+
+// [Read, requestID]
+message Key {
+	string key = 1;
+}
+
+message Content {
+	string key = 1;
+	int64 timestamp = 2;
+	string value	= 3;
+}
+
+// [Value, requestID, ts, val, signature]
+// [Write, wts, val, signature]
+message Value {
+	Content c = 1;
+	bytes signatureR = 2;
+	bytes signatureS = 3;
+} 
+
+// [Ack, ts]
+message WriteResponse {
+	int64 timestamp = 1;
+}

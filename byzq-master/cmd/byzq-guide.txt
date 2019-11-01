@@ -1,0 +1,39 @@
+1)RUNNING ONE SERVER WITH THE KEY
+go run main.go -key keys/server
+
+2)RUNNING ONE SERVER WITH THE KEY AND THE PORT
+go run main.go -port=8081 -key keys/server
+
+3)KILLING THE SERVER:
+ctrl+c
+
+4) RUNNING A CLIENT
+go run main.go -port=8080 -writer
+
+5)IMPORTING A PACKAGE 
+"github.com/relab/gorums/cmd/demo/api"
+
+6) COMPILE PROTO
+protoc -I=$(GOPATH)/src/:. --gorums_out=plugins=grpc+gorums:. byzq.proto
+protoc byzq.proto --gorums_out=plugins=grpc+gorums:.
+----------------------------------------------------------------
+USEFULL SHORTCUTS VSC
+
+1)COPY THE WHOLE LINE
+"ctrl" + "c"
+2) ZOOM IN
+"ctrl" + "+" (890+\)
+3)ZOOM OUT
+"ctr" + "-"
+4)COMMENT OUT 
+"ctrl" + "'" 
+-----------------------------------------------------------------
+RUNNING TESTS
+cd dev
+go test -v // run all tests
+$ go test -run NameOfTest
+--------------------------------------------------------------------
+GO HINTS
+
+go env - check GOPATH and GOOROOT
+--------------------------------------------------------------------
