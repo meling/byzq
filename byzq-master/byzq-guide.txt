@@ -37,3 +37,15 @@ GO HINTS
 
 go env - check GOPATH and GOOROOT
 --------------------------------------------------------------------
+Implement the api in the following order
+1) specify service and message in .proto file
+2) compile the pb.go file (That is the only file that needs to be compiled)
+2) add the api in the server part
+3) use the servers api in the client
+
+--------------------------------------------------------------------
+IMPORTS
+1) server.go and client.go both must have import the package byzq
+	"github.com/relab/gorums/cmd/byzq-master/byzq"
+	where it will have acces to pb.go file and other methods that compose 
+	the byzq package

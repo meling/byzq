@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/relab/gorums/cmd/byzq-master"
-	"github.com/relab/gorums/cmd/demo/api"
+	"github.com/relab/gorums/cmd/byzq-master/byzq"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -44,6 +44,7 @@ func main() {
 		}
 		os.Exit(0)
 	}
+
 	if *saddrs == "" {
 		fmt.Println("inside")
 		// Use local addresses only..
@@ -60,7 +61,7 @@ func main() {
 		b := buf.String()
 		*saddrs = b[:len(b)-1]
 	}
-	fmt.Println("CORRECT CLIENT")
+
 	addrs := strings.Split(*saddrs, ",")
 	fmt.Println("Default servers ->", addrs)
 
@@ -91,7 +92,9 @@ func main() {
 		dief("error reading keyfile: %v", err)
 	}
 
-	fmt.Println("Creating new manager with opts...", secDialOption)
+	//dialTimeout := byzq.WithDialTimeout(100 * time.Millisecond)
+	//fmt.Printf("Creating new manager with opts : %v \n %v \n", secDialOption, dialTimeout(nil))
+
 	mgr, err := byzq.NewManager(
 		addrs,
 		byzq.WithGrpcDialOptions(
@@ -102,7 +105,6 @@ func main() {
 	)
 
 	fmt.Println("Managed Connections and Created a manager->", mgr)
-
 	if err != nil {
 		dief("error creating manager: %v", err)
 	}
@@ -131,52 +133,46 @@ func main() {
 	}
 	fmt.Println("StorageState created ->", storageState)
 
-	for {
-		if *writer {
-			// Writer client.
-			fmt.Println("==========Client Writing to servers...==============")
+	if *writer {
+		// Writer client.
+		fmt.Println("==========Client Writing to servers...==============")
 
-			storageState.Value = strconv.Itoa(rand.Intn(1 << 8))
-			fmt.Println("Chosing a random value ->", storageState.Value)
+		storageState.Value = strconv.Itoa(rand.Intn(1 << 8))
+		fmt.Println("Chosing a random value ->", storageState.Value)
 
-			storageState.Timestamp++
-			fmt.Println("Increased timestamp ->", storageState.Timestamp)
+		storageState.Timestamp++
+		fmt.Println("Increased timestamp ->", storageState.Timestamp)
 
-			signedState, err := qspec.Sign(storageState)
-			fmt.Println("Signed a storage state ->", signedState)
+		signedState, err := qspec.Sign(storageState)
+		fmt.Println("Signed a storage state ->", signedState)
 
-			if err != nil {
-				dief("failed to sign message: %v", err)
-			}
-
-			fmt.Println("Writing the state to the servers...")
-			ack, err := conf.Write(context.Background(), signedState)
-			fmt.Println("Got acknowlegement that all servers replyed ->", ack)
-
-			if err != nil {
-				dief("error writing: %v", err)
-			}
-
-			///////////////////////////////////////////////////////////////////////////////////////////////////
-
-			response, err := conf.SayHello(context.Background(), &api.PingMessage{Greeting: "Hello from the client"})
-			if err != nil {
-				log.Fatalf("Error when calling SayHello: %s", err)
-			}
-			log.Printf("Response from server: %s", response.Greeting)
-
-			///////////////////////////////////////////////////////////////////////////////////////////////////
-			time.Sleep(15 * time.Second)
-		} else {
-			// Reader client.
-			val, err := conf.Read(context.Background(), &byzq.Key{Key: storageState.Key})
-			if err != nil {
-				dief("error reading: %v", err)
-			}
-			fmt.Println("ReadReturn: " + val.String())
-			time.Sleep(10000 * time.Millisecond)
+		if err != nil {
+			dief("failed to sign message: %v", err)
 		}
+
+		fmt.Println("Writing the state to the servers...")
+		ack, err := conf.Write(context.Background(), signedState)
+		fmt.Println("Got acknowlegement that all servers replyed ->", ack)
+
+		if err != nil {
+			dief("error writing: %v", err)
+		}
+		//////////////////////////////////////////////////////////////////////////////
+		//EchoWrite
+		for _, node := range mgr.Nodes() {
+			c := node.StorageClient
+			response, err := c.EchoWrite(context.Background(), &byzq.PingMessage{Greeting: "Trigger EchoWrite between servers", ServerId: int64(*port), Connect: true})
+			if err != nil {
+				log.Fatalf("Error when calling EchoWrite: %s", err)
+			}
+			fmt.Println("Response from server", response.ServerId, ":", response.Greeting)
+
+		}
+		//////////////////////////////////////////////////////////////////////////////
+
+		time.Sleep(15 * time.Second)
 	}
+
 }
 
 func dief(format string, a ...interface{}) {
