@@ -7,36 +7,18 @@ import "gogo/protobuf/gogoproto/gogo.proto";
 
 option (gogoproto.equal_all) = true;
 
-
-
 service Storage {
-	rpc Read(Key) returns (Value) {
-		option (gorums.qc) = true;
-		option (gorums.custom_return_type) = "Content";
-	}
 	rpc Write(Value) returns (WriteResponse) {
 		option (gorums.qc) = true;
 		option (gorums.qf_with_req) = true;
 	}
-	rpc EchoWrite(PingMessage) returns (PingMessage) {}
-
-}
-
-message PingMessage {
-	string greeting = 1;
-	int64 serverId = 2;
-	bool connect = 3;
-  }
-
-// [Read, requestID]
-message Key {
-	string key = 1;
 }
 
 message Content {
 	string key = 1;
 	int64 timestamp = 2;
 	string value	= 3;
+	bool echowrite = 4;
 }
 
 // [Value, requestID, ts, val, signature]

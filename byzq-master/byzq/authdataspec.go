@@ -222,6 +222,7 @@ func (aq *AuthDataQ) VerfiyLastReplyFirstReadQF(replies []*Value) (*Content, boo
 // WriteQF returns nil and false until it is possible to check for a quorum.
 // If enough replies with the same timestamp is found, we return true.
 func (aq *AuthDataQ) WriteQF(req *Value, replies []*WriteResponse) (reply *WriteResponse, quorum bool) {
+	fmt.Println("req, replies :", req, replies)
 	if len(replies) <= aq.q {
 		return nil, false
 	}

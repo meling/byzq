@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -21,6 +20,10 @@ import (
 )
 
 //n.conn, err = grpc.Dial(n.addr, grpc.WithInsecure())
+
+var (
+	state *storage
+)
 
 func main() {
 	var (
@@ -55,8 +58,13 @@ func main() {
 
 	//Connect to all servers // should be goroutine
 	fmt.Println("Connecting the servers...")
-	conf, mgr, qspec, storageState := connectServers(*port, addrs, privKey)
-	fmt.Println("Connected all servers, (conf, mgr, qspec, storageState) ->", conf, mgr, qspec, storageState)
+	state.configuration, state.manager, state.qspecs, state.signedState = connectServers(*port, addrs, privKey)
+	fmt.Println("Connected all servers, (conf, mgr, qspec, storageState")
+
+	//state = &storage{configuration: conf, manager: mgr, qspecs: qspec, storageState: storageState}
+	fmt.Println("updated the state ->", state.serverPort, state.signedState)
+
+	time.Sleep(10000 * time.Second)
 
 }
 
@@ -89,7 +97,7 @@ func serve(port int, keyFile string, noauth bool, addrs []string, privKey *ecdsa
 	fmt.Println("Creating new grpcServer with opts ->", opts)
 	grpcServer := grpc.NewServer(opts...)
 	smap := make(map[string]byzq.Value)
-	state := &storage{state: smap, serverPort: port, servers: addrs, privKey: privKey}
+	state = &storage{state: smap, serverPort: port, servers: addrs, privKey: privKey}
 	byzq.RegisterStorageServer(grpcServer, state)
 
 	// Start serving
@@ -99,7 +107,7 @@ func serve(port int, keyFile string, noauth bool, addrs []string, privKey *ecdsa
 	}
 }
 
-func connectServers(port int, addrs []string, Key *ecdsa.PrivateKey) (*byzq.Configuration, *byzq.Manager, *byzq.AuthDataQ, *byzq.Content) {
+func connectServers(port int, addrs []string, Key *ecdsa.PrivateKey) (*byzq.Configuration, *byzq.Manager, *byzq.AuthDataQ, *byzq.Value) {
 	fmt.Println("in connect servers")
 	// Set Dial options
 	grpcOpts := []grpc.DialOption{grpc.WithBlock()}
@@ -129,16 +137,24 @@ func connectServers(port int, addrs []string, Key *ecdsa.PrivateKey) (*byzq.Conf
 	if err != nil {
 		dief("error creating config: %v", err)
 	}
-	//Create Storage state
+	// Create Storage state
 	fmt.Println("Creating new storageState...")
 	storageState := &byzq.Content{
-		Key:       "Hein",
-		Value:     "Meling",
+		Key:       "ServertoServer",
+		Value:     "Echowrite",
 		Timestamp: -1,
+		Echowrite: false,
 	}
 	fmt.Println("StorageState created ->", storageState)
 
-	return conf, mgr, qspec, storageState
+	//storageState.Value = strconv.Itoa(rand.Intn(1 << 8))
+	storageState.Timestamp++
+	signedState, err := qspec.Sign(storageState)
+	if err != nil {
+		dief("failed to sign message: %v", err)
+	}
+
+	return conf, mgr, qspec, signedState
 }
 
 type storage struct {
@@ -147,114 +163,50 @@ type storage struct {
 	serverPort int
 	servers    []string
 	privKey    *ecdsa.PrivateKey
-}
 
-func (r *storage) Read(ctx context.Context, k *byzq.Key) (*byzq.Value, error) {
-	r.RLock()
-	value := r.state[k.Key]
-	r.RUnlock()
-	return &value, nil
+	configuration *byzq.Configuration
+	manager       *byzq.Manager
+	qspecs        *byzq.AuthDataQ
+	signedState   *byzq.Value
 }
 
 func (r *storage) Write(ctx context.Context, v *byzq.Value) (*byzq.WriteResponse, error) {
 	//Echowrite should happen here
 	fmt.Println("In servers Write")
-	wr := &byzq.WriteResponse{Timestamp: v.C.Timestamp}
-	r.Lock()
-	val, found := r.state[v.C.Key]
-	if !found || v.C.Timestamp > val.C.Timestamp {
-		r.state[v.C.Key] = *v
-	}
-	r.Unlock()
-	return wr, nil
-}
 
-// EchoWrite generates response to a Ping request
-func (r *storage) EchoWrite(ctx context.Context, in *byzq.PingMessage) (*byzq.PingMessage, error) {
+	fmt.Println("the manager, serverport of the updated state inside write-> ", r.manager, r.serverPort)
 
-	if in.Connect {
-		fmt.Println("Received message :", in.Greeting, " from :", in.ServerId, "Connect ->", in.Connect)
-		fmt.Println("Connecting all servers...")
-
-		// Insecure Dial with grpc
-		var secDialOption grpc.DialOption
-		secDialOption = grpc.WithInsecure()
-
-		// Create manager
-		fmt.Println("Creating new manager with opts...", secDialOption)
-		mgr, err := byzq.NewManager(
-			r.servers,
-			byzq.WithGrpcDialOptions(
-				grpc.WithBlock(),
-				grpc.WithTimeout(0*time.Millisecond),
-				secDialOption,
-			),
-		)
-		defer mgr.Close()
-		if err != nil {
-			dief("error creating manager: %v", err)
-		}
-		fmt.Println("Managed Connections and Created a manager->", mgr)
-		ids := mgr.NodeIDs()
-		fmt.Println("mgr.NodeIDs() ->", ids)
-
-		// Creating new authorization dataQ
-		fmt.Println("Creating NewAuthDataQ...")
-		qspec, err := byzq.NewAuthDataQ(len(ids)+1, r.privKey, &r.privKey.PublicKey)
-		if err != nil {
-			dief("error creating quorum specification: %v", err)
-		}
-		fmt.Println("Created qspec ->", qspec)
-
-		// Creating Configuration
-		fmt.Println("Creating NewConfiguration...")
-		conf, err := mgr.NewConfiguration(ids, qspec)
-		if err != nil {
-			dief("error creating config: %v", err)
-		}
-
-		fmt.Println("Creating new storageState...")
-		storageState := &byzq.Content{
-			Key:       "Server to server",
-			Value:     "Connection test",
-			Timestamp: -1,
-		}
-		fmt.Println("StorageState created ->", storageState)
-
-		// Writer server.
-		fmt.Println("==========Server Writing to other servers...==============")
-
-		storageState.Value = strconv.Itoa(rand.Intn(1 << 8))
-		storageState.Timestamp++
-		signedState, err := qspec.Sign(storageState)
-		if err != nil {
-			dief("failed to sign message: %v", err)
-		}
-		ack, err := conf.Write(context.Background(), signedState)
+	if v.C.Echowrite {
+		fmt.Println("cheking if manager was updated ->", r.manager.Nodes())
+		fmt.Println("r.configuration.Nodes() ->", r.configuration.Nodes())
+		ack, err := r.configuration.Write(ctx, r.signedState)
 		fmt.Println("Got acknowlegement that all servers replyed ->", ack)
-
 		if err != nil {
 			dief("error writing: %v", err)
 		}
-
-		//EchoWrite to other servers
-		for _, node := range mgr.Nodes() {
-			c := node.StorageClient
-			response, err := c.EchoWrite(context.Background(), &byzq.PingMessage{Greeting: "Server to Server write", ServerId: int64(r.serverPort), Connect: false})
-			if err != nil {
-				log.Fatalf("Error when calling EchoWrite: %s", err)
-			}
-			fmt.Println("Response from server ", response.ServerId, ":", response.Greeting)
-
-		}
-
-	} else {
-		//if connect is false
-		fmt.Println("Received :", in.Greeting, " from  :", in.ServerId, "Connect ->", in.Connect)
-		return &byzq.PingMessage{Greeting: "Reply to Server to server write ", ServerId: int64(r.serverPort)}, nil
 	}
-	return &byzq.PingMessage{Greeting: "EchoWrite Completed", ServerId: int64(r.serverPort)}, nil
+
+	wr := &byzq.WriteResponse{Timestamp: v.C.Timestamp}
+	fmt.Println("Replying with wr ->", wr)
+	return wr, nil
 }
+
+//func (r *storage) EchoWrite(ctx context.Context, in *byzq.PingMessage) (*byzq.PingMessage, error) {
+
+// EchoWrite generates response to a Ping request
+// func (r *storage) EchoWrite(ctx context.Context, in *byzq.PingMessage) (*byzq.PingMessage, error) {
+// 	//EchoWrite to other servers
+// 	for _, node := range mgr.Nodes() {
+// 		c := node.StorageClient
+// 		response, err := c.EchoWrite(context.Background(), &byzq.PingMessage{Greeting: "Server to Server write", ServerId: int64(r.serverPort), Connect: false})
+// 		if err != nil {
+// 			log.Fatalf("Error when calling EchoWrite: %s", err)
+// 		}
+// 		fmt.Println("Response from server ", response.ServerId, ":", response.Greeting)
+
+// 	}
+// 	return &byzq.PingMessage{Greeting: "EchoWrite Completed", ServerId: int64(r.serverPort)}, nil
+// }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -276,3 +228,10 @@ func removePort(slice []string, port int) []string {
 	}
 	return answer
 }
+
+// func (r *storage) Read(ctx context.Context, k *byzq.Key) (*byzq.Value, error) {
+// 	r.RLock()
+// 	value := r.state[k.Key]
+// 	r.RUnlock()
+// 	return &value, nil
+// }
