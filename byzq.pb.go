@@ -6,9 +6,19 @@ package byzq
 import (
 	bytes "bytes"
 	context "context"
-	"encoding/binary"
+	encoding_binary "encoding/binary"
 	fmt "fmt"
-	"hash/fnv"
+	_ "github.com/gogo/protobuf/gogoproto"
+	proto "github.com/gogo/protobuf/proto"
+	_ "github.com/relab/gorums"
+	golang_org_x_net_trace "golang.org/x/net/trace"
+	google_golang_org_grpc "google.golang.org/grpc"
+	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	google_golang_org_grpc_codes "google.golang.org/grpc/codes"
+	google_golang_org_grpc_status "google.golang.org/grpc/status"
+	status "google.golang.org/grpc/status"
+	hash_fnv "hash/fnv"
 	io "io"
 	log "log"
 	math "math"
@@ -20,14 +30,6 @@ import (
 	strings "strings"
 	sync "sync"
 	time "time"
-
-	_ "github.com/gogo/protobuf/gogoproto"
-	proto "github.com/gogo/protobuf/proto"
-	_ "github.com/relab/gorums"
-	"golang.org/x/net/trace"
-	grpc "google.golang.org/grpc"
-	codes "google.golang.org/grpc/codes"
-	status "google.golang.org/grpc/status"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -384,7 +386,6 @@ func (c *Configuration) Write(ctx context.Context, a *Value) (resp *WriteRespons
 	expected := c.n
 	replyChan := make(chan internalWriteResponse, expected)
 	for _, n := range c.nodes {
-		fmt.Println("trying to write to node ->", n)
 		go callGRPCWrite(ctx, n, a, replyChan)
 	}
 
@@ -397,9 +398,7 @@ func (c *Configuration) Write(ctx context.Context, a *Value) (resp *WriteRespons
 	for {
 		select {
 		case r := <-replyChan:
-			fmt.Println("got message on replyChan")
 			if r.err != nil {
-				fmt.Println("error after replyChan")
 				errs = append(errs, GRPCError{r.nid, r.err})
 				break
 			}
@@ -408,30 +407,29 @@ func (c *Configuration) Write(ctx context.Context, a *Value) (resp *WriteRespons
 			}
 			replyValues = append(replyValues, r.reply)
 			if resp, quorum = c.qspec.WriteQF(a, replyValues); quorum {
-				fmt.Println("quorum is reached")
 				return resp, nil
 			}
 		case <-ctx.Done():
-			fmt.Println("Reporting quorum calll error")
 			return resp, QuorumCallError{ctx.Err().Error(), len(replyValues), errs}
 		}
 
 		if len(errs)+len(replyValues) == expected {
-			fmt.Println("returning incomplete call")
 			return resp, QuorumCallError{"incomplete call", len(replyValues), errs}
 		}
 	}
 }
 
 func callGRPCWrite(ctx context.Context, node *Node, arg *Value, replyChan chan<- internalWriteResponse) {
-	fmt.Println("In callGRPCWrite", node.conn)
 	reply := new(WriteResponse)
 	start := time.Now()
-	err := grpc.Invoke(ctx, "/byzq.Storage/Write", arg, reply, node.conn)
-	fmt.Println("printing the error after grpc Invoke ", err)
+	err := grpc.Invoke(
+		ctx,
+		"/byzq.Storage/Write",
+		arg,
+		reply,
+		node.conn,
+	)
 	s, ok := status.FromError(err)
-	fmt.Println("Status from error", ok)
-
 	if ok && (s.Code() == codes.OK || s.Code() == codes.Canceled) {
 		node.setLatency(time.Since(start))
 	} else {
@@ -722,15 +720,12 @@ func (m *Manager) connectAll() error {
 	}
 
 	for _, node := range m.nodes {
-		fmt.Println("Triying to connect ot node ->", node)
 		err := node.connect(m.opts)
 		if err != nil {
 			if m.eventLog != nil {
 				m.eventLog.Errorf("connect failed, error connecting to node %s, error: %v", node.addr, err)
 			}
 			return fmt.Errorf("connect node %s error: %v", node.addr, err)
-		} else {
-			fmt.Println("Sucsessefully connected to node ->", node)
 		}
 	}
 	return nil

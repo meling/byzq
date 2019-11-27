@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/relab/gorums/cmd/byzq-master/byzq"
+	"byzq"
 )
 
 //n.conn, err = grpc.Dial(n.addr, grpc.WithInsecure())

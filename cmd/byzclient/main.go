@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/relab/gorums/cmd/byzq-master/byzq"
+	"byzq"
 
 	"google.golang.org/grpc"
 )

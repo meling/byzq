@@ -11,6 +11,7 @@ import (
 )
 
 // To generate gorums code for byzq.proto, run 'go generate' in this folder
+//TODO(meling) fix the path so that it finds the import proto files; GOPATH/src does not work anymore
 //go:generate protoc -I=$GOPATH/src/:. --gorums_out=plugins=grpc+gorums:. byzq.proto
 
 // AuthDataQ is the quorum specification for the Authenticated-Data Byzantine
